@@ -6,20 +6,30 @@ use std::net::TcpStream;
 use web_server::ThreadPool;
 
 fn main() {
-    // TODO: Properly handle the case in which we cannot bind to the address & port.
-    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-    let pool = ThreadPool::new(4);
+    let local_host = String::from("127.0.0.1");
+    let port_number = String::from("7878");
+    let host = format!("{}:{}", local_host, port_number);
 
-    for stream in listener.incoming() {
-        // TODO: Properly handle the error.
-        let stream = stream.unwrap();
+    let listener = TcpListener::bind(host.clone());
+    match listener {
+        Ok(listener) => {
+            let pool = ThreadPool::new(4);
 
-        pool.execute(|| {
-            handle_connection(stream);
-        });
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        pool.execute(|| {
+                            handle_connection(stream);
+                        });
+                    },
+                    Err(e) => println!("Failed to open TcpStream: '{}'", e)
+                }
+            }
+
+            println!("Shutting down.");
+        },
+        Err(e) => println!("Failed to bind to address '{}': '{}'", host, e)
     }
-
-    println!("Shutting down.");
 }
 
 fn handle_connection(mut stream: TcpStream) {
@@ -27,16 +37,30 @@ fn handle_connection(mut stream: TcpStream) {
     // TODO: Properly handle the error.
     stream.read(&mut buffer).unwrap();
     
-    let get = b"GET / HTTP/1.1\r\n";
+    let get = "GET";
 
-    let (status_line, filename) = if buffer.starts_with(get) {
-        ("HTTP/1.1 200 OK\r\n\r\n", "hello.html")
+    let line = String::from_utf8(buffer).unwrap();
+    let (status_line, filename) = if line.starts_with(get) {
+        let mut line_iter = line.split_whitespace();
+        line_iter.next();
+        let full_path = line_iter.next().unwrap();
+        let path = &full_path[1..];
+        ("HTTP/1.1 200 OK\r\n\r\n", path)
     } else {
         ("HTTP/1.1 404 NOT FOUND\r\n\r\n", "404.html")
     };
-    
-    // TODO: Properly handle the error.
-    let contents = fs::read_to_string(filename).unwrap();
+
+    let contents = fs::read_to_string(filename);
+    let contents = match contents {
+        Ok(contents) => contents,
+        Err(_) => match fs::read_to_string("404.html") {
+            Ok(contents) => contents,
+            Err(error) => {
+                println!("404 html file not found. Default response returned instead. {}", error);
+                String::from("404")
+            }
+        },
+    };
 
     let response = format!("{}{}", status_line, contents);
 

@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::prelude::*;
+use std::io;
 use std::net::TcpListener;
 use std::net::TcpStream;
 
@@ -50,10 +51,9 @@ fn handle_connection(mut stream: TcpStream) {
         ("HTTP/1.1 404 NOT FOUND\r\n\r\n", "404.html")
     };
 
-    let contents = fs::read_to_string(filename);
-    let contents = match contents {
+    let contents = match get_file("html", filename) {
         Ok(contents) => contents,
-        Err(_) => match fs::read_to_string("404.html") {
+        Err(_) => match get_file("html", "404.html") {
             Ok(contents) => contents,
             Err(error) => {
                 println!("404 html file not found. Default response returned instead. {}", error);
@@ -68,4 +68,9 @@ fn handle_connection(mut stream: TcpStream) {
     stream.write(response.as_bytes()).unwrap();
     // TODO: Properly handle the error.
     stream.flush().unwrap();
+}
+
+fn get_file(html_root: &str, path: &str) -> io::Result<String> {
+    let full_path = format!("{}/{}", html_root, path);
+    fs::read_to_string(full_path)
 }

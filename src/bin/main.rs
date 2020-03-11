@@ -35,17 +35,40 @@ fn main() {
 
 fn handle_connection(mut stream: TcpStream) {
     let mut buffer = vec![0; 2048];
-    // TODO: Properly handle the error.
-    stream.read(&mut buffer).unwrap();
+
+    match stream.read(&mut buffer) {
+        Ok(b) => b,
+        Err(e) => {
+            println!("Failed to load request buffer from stream: '{}'", e);
+            return;
+        }
+    };
     
     let get = "GET";
 
-    let line = String::from_utf8(buffer).unwrap();
+    let line = match String::from_utf8(buffer) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Failed to parse HTTP request line: '{}'", e);
+            return;
+        }
+    };
+
     let (status_line, filename) = if line.starts_with(get) {
         let mut line_iter = line.split_whitespace();
+
+        // Consume the method of the HTTP request line.
         line_iter.next();
-        let full_path = line_iter.next().unwrap();
+
+        // Take the request URI of the HTTP request line; return root if none found.
+        let full_path = match line_iter.next() {
+            Some(item) => item,
+            None => "/"
+        };
+        
+        // Discard leading slash. "/my/uri/" -> "my/uri/"
         let path = &full_path[1..];
+
         ("HTTP/1.1 200 OK\r\n\r\n", path)
     } else {
         ("HTTP/1.1 404 NOT FOUND\r\n\r\n", "404.html")
@@ -64,10 +87,19 @@ fn handle_connection(mut stream: TcpStream) {
 
     let response = format!("{}{}", status_line, contents);
 
-    // TODO: Properly handle the error.
-    stream.write(response.as_bytes()).unwrap();
-    // TODO: Properly handle the error.
-    stream.flush().unwrap();
+    match stream.write(response.as_bytes()) {
+        Ok(b) => b,
+        Err(e) => 
+        {
+            println!("Failed to write to stream: '{}'", e);
+            0
+        }
+    };
+
+    match stream.flush() {
+        Err(e) => println!("Failed to flush stream: '{}'", e),
+        _ => ()
+    };
 }
 
 fn get_file(html_root: &str, path: &str) -> io::Result<String> {
